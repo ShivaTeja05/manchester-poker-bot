@@ -138,6 +138,9 @@ class Model:
     # range is right now (strong ranges do not fold), never above their
     # overall fold rate.
     PF_RANGE = True
+    # How much the starting guesses weigh against what we observe: lower
+    # adapts to the opponent faster.
+    PRIOR_SCALE = 1.0
     SD_BET = False
     SD_CALL = False
     SD_PF = False
@@ -194,7 +197,8 @@ class Model:
         self.opp_team = gs.teams[opp]
         if self.opp_team not in self.stats:
             self.stats[self.opp_team] = {
-                k: list(v) for k, v in PRIORS.items()
+                k: [x * self.PRIOR_SCALE for x in v]
+                for k, v in PRIORS.items()
             }
         # Preflop every chip put in is in bets, so this is the start.
         start = [gs.stacks[p] + gs.bets[p] for p in range(2)]
@@ -757,6 +761,53 @@ class Model:
             return PlayerAction.call(me)
         return PlayerAction.fold(me)
 
+    def profile(self, team):
+        """What we have seen this opponent do (priors removed) and a style
+        label: how the bot reads them. Plain data, for people to look at."""
+        seen = self.stats.get(team)
+        if seen is None:
+            return None
+        out = {}
+        for ctx, counts in seen.items():
+            base = PRIORS[ctx]
+            obs = [max(0.0, c - b * self.PRIOR_SCALE)
+                   for c, b in zip(counts, base)]
+            n = sum(obs)
+            out[ctx] = {"seen": int(round(n)),
+                        "fold_call_raise_shove": [round(x / n, 2) if n else None
+                                                  for x in obs]}
+
+        def rate(ctx, idx):
+            f = self._freqs_of(seen, ctx)
+            return sum(f[i] for i in idx)
+
+        opens = rate("sb_open", (2, 3))
+        folds_to_bets = rate("post_vs_bet", (0,))
+        bets = rate("post_open", (2, 3))
+        calls_allin = rate("vs_shove", (1,))
+        if opens > 0.75 and bets > 0.55:
+            style = "loose-aggressive: call down lighter, trap"
+        elif folds_to_bets < 0.3:
+            style = "calling station: value-bet, never bluff"
+        elif opens < 0.45 and folds_to_bets > 0.5:
+            style = "tight-passive: steal and bluff more"
+        elif calls_allin > 0.6:
+            style = "calls all-ins wide: shove only for value"
+        else:
+            style = "balanced: play the EV"
+        out["summary"] = {"opens_sb": round(opens, 2),
+                          "folds_to_bets": round(folds_to_bets, 2),
+                          "bets_when_checked_to": round(bets, 2),
+                          "calls_allin": round(calls_allin, 2),
+                          "style": style}
+        return out
+
+    @staticmethod
+    def _freqs_of(seen, ctx):
+        c = seen[ctx]
+        total = c[0] + c[1] + c[2] + c[3]
+        return [x / total for x in c] if total else [0.25] * 4
+
     def _learn_showdown(self, combo):
         ci = COMBO_INDEX.get(combo)
         if ci is None:
@@ -788,7 +839,8 @@ class Model:
                     team = game_state.teams[opp]
                     if team not in self.stats:
                         self.stats[team] = {
-                            k: list(v) for k, v in PRIORS.items()
+                            k: [x * self.PRIOR_SCALE for x in v]
+                            for k, v in PRIORS.items()
                         }
                     folded = any(a.kind == "fold" and a.player_id == opp
                                  for a in actions)

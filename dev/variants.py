@@ -37,3 +37,11 @@ class LowR2(Model):
 class NoPFRange(Model):
     """v3 as submitted: fold chance from overall rates only."""
     PF_RANGE = False
+
+
+class FastAdapt(Model):
+    PRIOR_SCALE = 0.5
+
+
+class SlowAdapt(Model):
+    PRIOR_SCALE = 1.6
