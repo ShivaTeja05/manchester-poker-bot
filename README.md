@@ -10,6 +10,13 @@
 | `fasteval.py` | fast hand evaluator used by the bot |
 | `pftable.py` | precomputed preflop equity table used by the bot |
 
+**Importing:** give `arena.event import` a team folder holding only these four
+files. The template files at the repo root (`card_utils.py`, `engine.py`,
+`game_interface.py`, `game_state.py`, `player_action.py`, `submit.py`) are your
+own copies, and their reserved names make `arena.vet` refuse a folder that
+contains the whole repo. With just the four files the import reports READY,
+"plays legally".
+
 Checks run on a fresh clone of this repo: `arena.vet` review OK (nothing
 refused or flagged), plays legally in `python -m arena` worker processes with
 0 faults, `tests/test_model.py` passes, and it runs on Python 3.10 and 3.13.
