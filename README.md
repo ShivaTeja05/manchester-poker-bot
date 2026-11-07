@@ -28,8 +28,6 @@ Write a bot that plays no-limit Texas hold'em. Your bot is a `Model` in
 `model.py`. It is pickled and submitted, and the organisers' engine plays it
 against other teams' bots.
 
-**Join the participants' WhatsApp group** for announcements and questions: https://tr.ee/5W_MS_DJK9
-
 ## 1. Fork and set up
 
 1. **Fork the repo.** Fork https://github.com/Manchester-AI-Society/poker_bot
@@ -232,11 +230,6 @@ class Model:
 Beating the dummy bots shows your bot works, not that it will win the
 tournament: that depends on the other teams. Results are only meaningful when
 the interval does not include 0, so add `--deals` to narrow it.
-
-## 5. Submit
-
-Submit your bot by filling in this Google form:
-https://docs.google.com/forms/d/e/1FAIpQLSe1MQUfkZcGnGBpcgON4J7HumKMBsOekWnr0ZvLcytxA8R5gQ/viewform?usp=dialog
 
 ## For the organiser
 
