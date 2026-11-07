@@ -16,7 +16,9 @@ def make(name, seed):
         return Model()
     if name.startswith("mod:"):
         mod, cls = name[4:].split(".")
-        m = __import__(mod)
+        import old_v1
+        import variants
+        m = {"old_v1": old_v1, "variants": variants}[mod]
         return m.__dict__[cls]()
     from sparring_bots import SPARRING_BOTS
     table = dict(DUMMIES)

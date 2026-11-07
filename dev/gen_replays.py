@@ -10,7 +10,7 @@ from sim import make
 import variants
 
 
-class Rec(variants.LowR if "--lowr" in sys.argv else __import__("model").Model):
+class Rec(variants.Model):
     def seed(self, hand, player_id):
         super().seed(hand, player_id)
         self.trace = []

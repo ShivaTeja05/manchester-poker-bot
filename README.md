@@ -1,3 +1,15 @@
+# Team shivateja: heads-up NLHE bot
+
+**Submission (repo root):** `shivateja.pkl` plus the files it needs: `model.py`,
+`fasteval.py`, `pftable.py`. Built with `python -m submit --team shivateja`
+(checked: plays legally against every dummy bot, nothing flagged by the code
+review). The same four files are in `submission/`.
+
+Dev tools (not part of the bot) are in `dev/`; run them from the repo root
+with `PYTHONPATH=. .venv/bin/python dev/sim.py model tag lag --deals 200`.
+
+---
+
 # Poker bot hackathon
 
 Write a bot that plays no-limit Texas hold'em. Your bot is a `Model` in
