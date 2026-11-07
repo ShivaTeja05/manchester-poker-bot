@@ -1,9 +1,24 @@
 # Team shivateja: heads-up NLHE bot
 
-**Our one bot (v5):** `shivateja.pkl` plus the files it needs, `model.py`,
-`fasteval.py` and `pftable.py`, all at the repo root. Built with
-`python -m submit --team shivateja`: it plays legally against every dummy bot
-and nothing is flagged by the code review.
+**For the organisers.** Our one bot is at the repo root, flat next to
+`model.py`, exactly as `python -m submit --team shivateja` lists it:
+
+| File | What it is |
+|---|---|
+| `shivateja.pkl` | the pickled `model.Model` (team name: `shivateja`) |
+| `model.py` | the bot |
+| `fasteval.py` | fast hand evaluator used by the bot |
+| `pftable.py` | precomputed preflop equity table used by the bot |
+
+Checks run on a fresh clone of this repo: `arena.vet` review OK (nothing
+refused or flagged), plays legally in `python -m arena` worker processes with
+0 faults, `tests/test_model.py` passes, and it runs on Python 3.10 and 3.13.
+Standard library only (plus the pinned `pydantic` from `requirements.txt`);
+no network, no files, no engine internals. The template files
+(`card_utils.py`, `engine.py`, `game_state.py`, ...) are unchanged from the
+official repo.
+
+To try it: `python -m arena shivateja.pkl equity tight --deals 40`
 
 ---
 
