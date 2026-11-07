@@ -131,6 +131,9 @@ class Model:
 
     # Showdown-based reads of the opponent's bets and calls: off, since in
     # testing they lost to the plain frequency-based reads.
+    # How much of its equity a hand realises out of position.
+    R_OOP = (0.78, 0.85, 0.92)
+    BLUFF_PRIOR = 1.0
     SD_BET = False
     SD_CALL = False
     SD_PF = False
@@ -142,6 +145,7 @@ class Model:
         self.stats = {}  # team -> context -> [fold, call, raise, shove]
         self.hands_seen = 0
         self.errors = 0
+        self.debug = None
         # team -> {"bet": [...], "call": [...]}: how strong (0-1) the
         # hands were that we saw this opponent bet or call with postflop.
         self.sd = {}
@@ -519,11 +523,11 @@ class Model:
 
     def _realize(self, eq, ip, street):
         if street == 0:
-            base = 0.98 if ip else 0.84
+            base = 0.98 if ip else self.R_OOP[0]
         elif street == 1:
-            base = 0.97 if ip else 0.89
+            base = 0.97 if ip else self.R_OOP[1]
         elif street == 2:
-            base = 0.99 if ip else 0.94
+            base = 0.99 if ip else self.R_OOP[2]
         else:
             return 1.0
         r = base + (eq - 0.5) * 0.3
@@ -587,6 +591,9 @@ class Model:
             v2 = v + self.rng.gauss(0, scale)
             if best_v is None or v2 > best_v:
                 best, best_v = k, v2
+        # What we weighed, kept as plain data (read by replays).
+        self.debug = [round(eq, 3), {str(k): round(v, 1)
+                                     for k, v in options.items()}]
         if best == "fold":
             return PlayerAction.fold(me)
         if best == "call":

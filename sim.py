@@ -64,8 +64,13 @@ if __name__ == "__main__":
         i = argv.index("--seeds")
         seeds = int(argv[i + 1])
         del argv[i:i + 2]
+    off = 0
+    if "--offset" in argv:
+        i = argv.index("--offset")
+        off = int(argv[i + 1])
+        del argv[i:i + 2]
     hero, opps = argv[0], argv[1:]
-    jobs = [(hero, o, deals, 1000 * s + 7) for o in opps for s in range(seeds)]
+    jobs = [(hero, o, deals, 1000 * s + 7 + off) for o in opps for s in range(seeds)]
     with Pool(8) as p:
         res = p.map(match, jobs)
     agg = {}
