@@ -10,6 +10,7 @@ from player_action import PlayerAction
 
 COMBOS = all_combos()
 NCOMBOS = len(COMBOS)
+COMBO_INDEX = {c: i for i, c in enumerate(COMBOS)}
 
 FOLD, CALL, RAISE, SHOVE = 0, 1, 2, 3
 
@@ -21,6 +22,7 @@ PRIORS = {
     "bb_vs_open": (2.4, 2.1, 0.6, 0.9),
     "vs_3bet": (2.4, 1.5, 0.3, 1.8),
     "vs_shove": (3.3, 2.7, 0.0, 0.0),
+    "vs_shove_post": (2.4, 3.6, 0.0, 0.0),
     "post_open": (0.0, 3.3, 2.3, 0.4),
     "post_vs_bet": (2.4, 2.7, 0.4, 0.5),
 }
@@ -54,6 +56,68 @@ def _sig(x):
     return 1.0 / (1.0 + math.exp(-x))
 
 
+def street_strengths(board, w):
+    """Strength in [0, 1] of every combo with weight on this board: its
+    made-hand percentile, plus a bonus for flush and straight draws."""
+    street = 1 if len(board) <= 3 else (2 if len(board) == 4 else 3)
+    vals = []
+    for i, (a, b) in enumerate(COMBOS):
+        if w[i] > 0:
+            vals.append((eval_cards([a, b] + board), i))
+    vals.sort()
+    s = [0.0] * NCOMBOS
+    n = len(vals)
+    j = 0
+    while j < n:
+        k = j
+        while k + 1 < n and vals[k + 1][0] == vals[j][0]:
+            k += 1
+        pct = ((j + k) / 2 + 0.5) / max(1, n)
+        for t in range(j, k + 1):
+            s[vals[t][1]] = pct
+        j = k + 1
+    if street < 3:
+        fd_bonus = 0.22 if street == 1 else 0.12
+        sd_bonus = 0.14 if street == 1 else 0.07
+        bsuits = [0, 0, 0, 0]
+        bmask = 0
+        for c in board:
+            bsuits[c & 3] += 1
+            bmask |= 1 << (c >> 2)
+        for _, i in vals:
+            a, b = COMBOS[i]
+            if s[i] > 0.9:
+                continue
+            bonus = 0.0
+            sa = a & 3
+            sb = b & 3
+            if sa == sb:
+                if bsuits[sa] == 2:
+                    bonus += fd_bonus
+            else:
+                if bsuits[sa] == 3 and (a >> 2) >= 9:
+                    bonus += fd_bonus * 0.8
+                if bsuits[sb] == 3 and (b >> 2) >= 9:
+                    bonus += fd_bonus * 0.8
+            m = bmask | 1 << (a >> 2) | 1 << (b >> 2)
+            hole = 1 << (a >> 2) | 1 << (b >> 2)
+            wins = 0
+            for lo in range(-1, 9):
+                if lo == -1:
+                    win = 0b1000000001111
+                else:
+                    win = 0b11111 << lo
+                if bin(m & win).count("1") == 4 and (hole & win) and (
+                        bin(bmask & win).count("1") < 4):
+                    wins += 1
+            if wins >= 2:
+                bonus += sd_bonus
+            elif wins == 1:
+                bonus += sd_bonus * 0.45
+            s[i] = min(0.97, s[i] + bonus)
+    return s
+
+
 class Model:
     """
     Heads-up no-limit hold'em bot.
@@ -72,6 +136,9 @@ class Model:
         self.stats = {}  # team -> context -> [fold, call, raise, shove]
         self.hands_seen = 0
         self.errors = 0
+        # team -> {"bet": [...], "call": [...]}: how strong (0-1) the
+        # hands were that we saw this opponent bet or call with postflop.
+        self.sd = {}
         self._reset_hand()
 
     # ----- hand bookkeeping -----
@@ -92,6 +159,7 @@ class Model:
         self.s = None
         self.s_street = -1
         self.button = 0
+        self.opp_log = []
 
     def seed(self, hand: list[Card], player_id: int):
         self.hand = hand
@@ -151,7 +219,7 @@ class Model:
         other = 1 - p
         facing = max(self.bets) - self.bets[p]
         if facing > 0 and self.stack[other] == 0:
-            return "vs_shove"
+            return "vs_shove" if self.street == 0 else "vs_shove_post"
         if self.street == 0:
             if self.raises == 0:
                 if p == self.button and not self.acted[p]:
@@ -213,6 +281,11 @@ class Model:
             self.raises += 1
             outcome = SHOVE if self.stack[p] == 0 else RAISE
         self.acted[p] = True
+        if ctx is not None and self.street >= 1:
+            if outcome in (RAISE, SHOVE):
+                self.opp_log.append(("bet", len(self.board)))
+            elif outcome == CALL and ctx in ("post_vs_bet", "vs_shove_post"):
+                self.opp_log.append(("call", len(self.board)))
         if ctx is not None and outcome is not None:
             try:
                 self._update_range(ctx, outcome)
@@ -227,66 +300,9 @@ class Model:
         preflop percentile, or made-hand percentile plus a draw bonus."""
         if self.s_street == self.street:
             return self.s
-        board = self.board
-        w = self.w
-        vals = []
-        for i, (a, b) in enumerate(COMBOS):
-            if w[i] > 0:
-                vals.append((eval_cards([a, b] + board), i))
-        vals.sort()
-        s = [0.0] * NCOMBOS
-        n = len(vals)
-        j = 0
-        while j < n:
-            k = j
-            while k + 1 < n and vals[k + 1][0] == vals[j][0]:
-                k += 1
-            pct = ((j + k) / 2 + 0.5) / max(1, n)
-            for t in range(j, k + 1):
-                s[vals[t][1]] = pct
-            j = k + 1
-        if self.street < 3:
-            fd_bonus = 0.22 if self.street == 1 else 0.12
-            sd_bonus = 0.14 if self.street == 1 else 0.07
-            bsuits = [0, 0, 0, 0]
-            bmask = 0
-            for c in board:
-                bsuits[c & 3] += 1
-                bmask |= 1 << (c >> 2)
-            for _, i in vals:
-                a, b = COMBOS[i]
-                if s[i] > 0.9:
-                    continue
-                bonus = 0.0
-                sa = a & 3
-                sb = b & 3
-                if sa == sb:
-                    if bsuits[sa] == 2:
-                        bonus += fd_bonus
-                else:
-                    if bsuits[sa] == 3 and (a >> 2) >= 9:
-                        bonus += fd_bonus * 0.8
-                    if bsuits[sb] == 3 and (b >> 2) >= 9:
-                        bonus += fd_bonus * 0.8
-                m = bmask | 1 << (a >> 2) | 1 << (b >> 2)
-                hole = 1 << (a >> 2) | 1 << (b >> 2)
-                wins = 0
-                for lo in range(-1, 9):
-                    if lo == -1:
-                        win = 0b1000000001111
-                    else:
-                        win = 0b11111 << lo
-                    if bin(m & win).count("1") == 4 and (hole & win) and (
-                            bin(bmask & win).count("1") < 4):
-                        wins += 1
-                if wins >= 2:
-                    bonus += sd_bonus
-                elif wins == 1:
-                    bonus += sd_bonus * 0.45
-                s[i] = min(0.97, s[i] + bonus)
-        self.s = s
+        self.s = street_strengths(self.board, self.w)
         self.s_street = self.street
-        return s
+        return self.s
 
     def _wquantile(self, p):
         """The strength below which a share p of the range's weight lies."""
@@ -312,6 +328,28 @@ class Model:
         w = self.w
         temp = 0.05 if self.street == 0 else 0.07
         aggressive = f[2] + f[3]
+        seen = self.sd.get(self.opp_team)
+        if self.street >= 1 and seen is not None:
+            if outcome in (RAISE, SHOVE) and len(seen["bet"]) >= 3:
+                obs = sorted(seen["bet"])
+                thr = obs[int(0.2 * len(obs))]
+                low = sum(1 for x in obs if x < 0.4) + 0.5
+                floor = max(0.04, min(0.45, low / (len(obs) + 3)))
+                for i in range(NCOMBOS):
+                    if w[i] > 0:
+                        w[i] *= floor + (1 - floor) * _sig((s[i] - thr) / temp)
+                return
+            if (outcome == CALL and ctx in ("post_vs_bet", "vs_shove_post")
+                    and len(seen["call"]) >= 3):
+                obs = sorted(seen["call"])
+                thr = obs[int(0.15 * len(obs))]
+                q_hi = self._wquantile(1 - min(0.95, max(0.02, aggressive)))
+                for i in range(NCOMBOS):
+                    if w[i] > 0:
+                        keep = 0.04 + 0.96 * _sig((s[i] - thr) / temp)
+                        keep *= 1 - 0.45 * _sig((s[i] - q_hi) / temp)
+                        w[i] *= keep
+                return
         if outcome == SHOVE:
             share = f[3] if f[3] > 0.02 else aggressive
             share = min(0.98, max(0.03, share))
@@ -590,7 +628,7 @@ class Model:
         all_in = x >= cap
         opp_call = min(x - opp_bet, opp_stack)
         if all_in:
-            ctx = "vs_shove"
+            ctx = "vs_shove" if street == 0 else "vs_shove_post"
         elif street == 0:
             if self.raises == 0 and me == self.button:
                 ctx = "bb_vs_open"
@@ -609,6 +647,21 @@ class Model:
         if street > 0 or all_in:
             ref = 0.33 if street > 0 else 0.45
             pf = pf * (1 + 1.6 * (odds - ref))
+        seen = self.sd.get(self.opp_team)
+        if street > 0 and seen is not None and len(seen["call"]) >= 3:
+            obs = sorted(seen["call"])
+            thr = obs[int(0.15 * len(obs))]
+            s = self._strengths()
+            w = self.w
+            tot = 0.0
+            below = 0.0
+            for i in range(NCOMBOS):
+                if w[i] > 0:
+                    tot += w[i]
+                    if s[i] < thr:
+                        below += w[i]
+            if tot > 0:
+                pf = 0.5 * pf + 0.5 * below / tot
         pf = max(0.01, min(0.95, pf))
         rest = max(1e-9, pc + pr)
         pc, pr = (1 - pf) * pc / rest, (1 - pf) * pr / rest
@@ -663,6 +716,25 @@ class Model:
             return PlayerAction.call(me)
         return PlayerAction.fold(me)
 
+    def _learn_showdown(self, combo):
+        ci = COMBO_INDEX.get(combo)
+        if ci is None:
+            return
+        seen = self.sd.setdefault(self.opp_team, {"bet": [], "call": []})
+        h0, h1 = self.h
+        cache = {}
+        for kind, nb in self.opp_log:
+            if nb not in cache:
+                board = self.board[:nb]
+                dead = set(board) | {h0, h1}
+                w = [0.0 if (a in dead or b in dead) else 1.0
+                     for a, b in COMBOS]
+                w[ci] = 1.0
+                cache[nb] = street_strengths(board, w)
+            seen[kind].append(cache[nb][ci])
+            if len(seen[kind]) > 80:
+                del seen[kind][0]
+
     def end_game(self, actions: list[PlayerAction],
                  game_state: GameStateView):
         try:
@@ -685,10 +757,13 @@ class Model:
             if self.n != 2:
                 return
             for a in actions:
-                if a.kind in ("fold", "call", "raise"):
-                    self._apply(a)
+                self._apply(a)
+            shown = [card_to_int(a.card) for a in actions
+                     if a.kind == "reveal_card" and a.player_id == self.opp]
+            if len(shown) == 2 and self.opp_log:
+                self._learn_showdown(tuple(sorted(shown)))
         except Exception:
-            pass
+            self.errors += 1
         finally:
             self.w = None
             self.s = None
