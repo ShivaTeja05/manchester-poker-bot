@@ -1,12 +1,9 @@
 # Team shivateja: heads-up NLHE bot
 
-**Submission (repo root):** `shivateja.pkl` plus the files it needs: `model.py`,
-`fasteval.py`, `pftable.py`. Built with `python -m submit --team shivateja`
-(checked: plays legally against every dummy bot, nothing flagged by the code
-review). The same four files are in `submission/`.
-
-Dev tools (not part of the bot) are in `dev/`; run them from the repo root
-with `PYTHONPATH=. .venv/bin/python dev/sim.py model tag lag --deals 200`.
+**Our one bot:** `shivateja.pkl` plus the files it needs, `model.py`,
+`fasteval.py` and `pftable.py`, all at the repo root. Built with
+`python -m submit --team shivateja`: it plays legally against every dummy bot
+and nothing is flagged by the code review.
 
 ---
 
