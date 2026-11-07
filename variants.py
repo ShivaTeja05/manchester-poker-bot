@@ -32,3 +32,8 @@ class V2(Model):
 
 class LowR2(Model):
     R_OOP = (0.74, 0.83, 0.91)
+
+
+class NoPFRange(Model):
+    """v3 as submitted: fold chance from overall rates only."""
+    PF_RANGE = False

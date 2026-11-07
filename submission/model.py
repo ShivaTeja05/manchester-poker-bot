@@ -134,6 +134,10 @@ class Model:
     # How much of its equity a hand realises out of position.
     R_OOP = (0.78, 0.85, 0.92)
     BLUFF_PRIOR = 1.0
+    # Fold chance against our bets judged by how strong the opponent's
+    # range is right now (strong ranges do not fold), never above their
+    # overall fold rate.
+    PF_RANGE = True
     SD_BET = False
     SD_CALL = False
     SD_PF = False
@@ -521,6 +525,21 @@ class Model:
             pass
         return PlayerAction.fold(me)
 
+    def _weak_share(self, thr):
+        """Share of the opponent's current range weaker than strength thr
+        (strength is a percentile, so thr is a fold rate read as a bar)."""
+        s = self._strengths()
+        w = self.w
+        tot = 0.0
+        below = 0.0
+        for i in range(NCOMBOS):
+            wi = w[i]
+            if wi > 0:
+                tot += wi
+                if s[i] < thr:
+                    below += wi
+        return below / tot if tot > 0 else thr
+
     def _realize(self, eq, ip, street):
         if street == 0:
             base = 0.98 if ip else self.R_OOP[0]
@@ -682,6 +701,8 @@ class Model:
                         below += w[i]
             if tot > 0:
                 pf = 0.5 * pf + 0.5 * below / tot
+        if self.PF_RANGE:
+            pf = min(pf, self._weak_share(pf))
         pf = max(0.01, min(0.95, pf))
         rest = max(1e-9, pc + pr)
         pc, pr = (1 - pf) * pc / rest, (1 - pf) * pr / rest
