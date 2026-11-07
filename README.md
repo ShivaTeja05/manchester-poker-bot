@@ -1,6 +1,6 @@
 # Team shivateja: heads-up NLHE bot
 
-**Our one bot:** `shivateja.pkl` plus the files it needs, `model.py`,
+**Our one bot (v5):** `shivateja.pkl` plus the files it needs, `model.py`,
 `fasteval.py` and `pftable.py`, all at the repo root. Built with
 `python -m submit --team shivateja`: it plays legally against every dummy bot
 and nothing is flagged by the code review.

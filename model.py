@@ -141,6 +141,20 @@ class Model:
     # How much the starting guesses weigh against what we observe: lower
     # adapts to the opponent faster.
     PRIOR_SCALE = 1.0
+    # v5: learn from our own bluffs whether this opponent folds to them.
+    BLUFF_ADAPT = True
+    BLUFF_EQ = 0.4
+    BLUFF_K = 3.0
+    # v5: offer a 1.5x pot bet after the flop (value against callers).
+    OVERBET = True
+    # v5: premium hands go all-in preflop, under control: only the top
+    # PREMIUM_TOP share of hands, only when this opponent has called
+    # all-ins at least PREMIUM_MIN_CALL of the time (so the shove gets
+    # paid), and only with at most PREMIUM_MAX_BB big blinds at risk.
+    PREMIUM_JAM = False  # tested: lost 19 bb/100 to v5 without it
+    PREMIUM_TOP = 0.04
+    PREMIUM_MIN_CALL = 0.4
+    PREMIUM_MAX_BB = 40
     SD_BET = False
     SD_CALL = False
     SD_PF = False
@@ -153,6 +167,8 @@ class Model:
         self.hands_seen = 0
         self.errors = 0
         self.debug = None
+        # team -> [folds, attempts] when we bet with a weak hand
+        self.bluffs = {}
         # team -> {"bet": [...], "call": [...]}: how strong (0-1) the
         # hands were that we saw this opponent bet or call with postflop.
         self.sd = {}
@@ -177,6 +193,7 @@ class Model:
         self.s_street = -1
         self.button = 0
         self.opp_log = []
+        self.bluff_pending = False
 
     def seed(self, hand: list[Card], player_id: int):
         self.hand = hand
@@ -278,6 +295,13 @@ class Model:
         p = a.player_id
         if p not in (0, 1):
             return
+        if self.bluff_pending and p == self.opp and kind in (
+                "fold", "call", "raise"):
+            rec = self.bluffs.setdefault(self.opp_team, [0.0, 0.0])
+            rec[1] += 1.0
+            if kind == "fold":
+                rec[0] += 1.0
+            self.bluff_pending = False
         ctx = None
         outcome = None
         if p == self.opp and learn:
@@ -569,6 +593,11 @@ class Model:
         ip = me == self.button
         bb = self.bb
 
+        jam = self._premium_jam(gs)
+        if jam is not None:
+            self.debug = [None, {"premium all-in": float(jam)}]
+            return PlayerAction.raise_to(me, jam)
+
         cum = self._equity(0.12 if street == 0 else 0.18)
         eq = self._band(cum, 0.0, 1.0)
 
@@ -621,7 +650,30 @@ class Model:
             return PlayerAction.fold(me)
         if best == "call":
             return PlayerAction.call(me)
+        if self.BLUFF_ADAPT and eq < self.BLUFF_EQ:
+            self.bluff_pending = True
         return PlayerAction.raise_to(me, int(best))
+
+    def _premium_jam(self, gs):
+        """All-in total for a premium hand preflop, or None (see the
+        PREMIUM_* settings)."""
+        if not self.PREMIUM_JAM or self.street != 0 or not gs.can_raise:
+            return None
+        if COMBO_PF[COMBO_INDEX[tuple(sorted(self.h))]] < 1 - self.PREMIUM_TOP:
+            return None
+        me = self.player_id
+        opp = self.opp
+        if gs.stacks[opp] == 0:
+            return None
+        low, high = gs.raise_range
+        cap = min(high, gs.bets[opp] + gs.stacks[opp])
+        if cap < low:
+            return None
+        if (gs.stacks[me] + gs.bets[me]) > self.PREMIUM_MAX_BB * self.bb:
+            return None
+        if self._freqs("vs_shove")[CALL] < self.PREMIUM_MIN_CALL:
+            return None
+        return int(cap)
 
     def _sizes(self, gs, low, cap):
         me = self.player_id
@@ -644,6 +696,8 @@ class Model:
                 out.add(int(pot * 0.4))
                 out.add(int(pot * 0.7))
                 out.add(int(pot * 1.0))
+                if self.OVERBET:
+                    out.add(int(pot * 1.5))
             else:
                 out.add(int(opp_bet * 2.8 + (pot - opp_bet - my_bet) * 0.3))
         out.add(cap)
@@ -707,6 +761,11 @@ class Model:
                 pf = 0.5 * pf + 0.5 * below / tot
         if self.PF_RANGE:
             pf = min(pf, self._weak_share(pf))
+        if self.BLUFF_ADAPT and eq < self.BLUFF_EQ:
+            rec = self.bluffs.get(self.opp_team)
+            if rec is not None and rec[1] > 0:
+                k = self.BLUFF_K
+                pf = (rec[0] + k * pf) / (rec[1] + k)
         pf = max(0.01, min(0.95, pf))
         rest = max(1e-9, pc + pr)
         pc, pr = (1 - pf) * pc / rest, (1 - pf) * pr / rest
