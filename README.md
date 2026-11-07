@@ -18,6 +18,13 @@ no network, no files, no engine internals. The template files
 (`card_utils.py`, `engine.py`, `game_state.py`, ...) are unchanged from the
 official repo.
 
+**Which bot:** v5, a hand-written Python strategy: Monte Carlo equity against
+a weighted model of the opponent's possible hands, expected-value decisions for
+fold / call / each bet size / all-in, and per-opponent adaptation (fold, call
+and raise frequencies in 8 spots, plus a record of how our bluffs fared). It
+uses no AI model, no API keys and no network: only `math`, `random` and `time`
+from the standard library, plus the template's own modules.
+
 To try it: `python -m arena shivateja.pkl equity tight --deals 40`
 
 ---
