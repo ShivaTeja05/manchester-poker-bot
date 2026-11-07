@@ -129,6 +129,12 @@ class Model:
     opponent folds, and its equity against the hands that continue.
     """
 
+    # Showdown-based reads of the opponent's bets and calls: off, since in
+    # testing they lost to the plain frequency-based reads.
+    SD_BET = False
+    SD_CALL = False
+    SD_PF = False
+
     def __init__(self):
         self.hand = []
         self.player_id = None
@@ -330,16 +336,22 @@ class Model:
         aggressive = f[2] + f[3]
         seen = self.sd.get(self.opp_team)
         if self.street >= 1 and seen is not None:
-            if outcome in (RAISE, SHOVE) and len(seen["bet"]) >= 3:
+            if (self.SD_BET and outcome in (RAISE, SHOVE)
+                    and len(seen["bet"]) >= 3):
                 obs = sorted(seen["bet"])
-                thr = obs[int(0.2 * len(obs))]
+                # Bluffs that got folded to never show, so the showdown
+                # threshold runs high: blend it with the frequency one.
+                share = min(0.98, max(0.03, aggressive))
+                thr = min(obs[int(0.2 * len(obs))],
+                          self._wquantile(1 - share))
                 low = sum(1 for x in obs if x < 0.4) + 0.5
-                floor = max(0.04, min(0.45, low / (len(obs) + 3)))
+                floor = max(0.1, min(0.45, low / (len(obs) + 3)))
                 for i in range(NCOMBOS):
                     if w[i] > 0:
                         w[i] *= floor + (1 - floor) * _sig((s[i] - thr) / temp)
                 return
-            if (outcome == CALL and ctx in ("post_vs_bet", "vs_shove_post")
+            if (self.SD_CALL and outcome == CALL
+                    and ctx in ("post_vs_bet", "vs_shove_post")
                     and len(seen["call"]) >= 3):
                 obs = sorted(seen["call"])
                 thr = obs[int(0.15 * len(obs))]
@@ -648,7 +660,8 @@ class Model:
             ref = 0.33 if street > 0 else 0.45
             pf = pf * (1 + 1.6 * (odds - ref))
         seen = self.sd.get(self.opp_team)
-        if street > 0 and seen is not None and len(seen["call"]) >= 3:
+        if (self.SD_PF and street > 0 and seen is not None
+                and len(seen["call"]) >= 3):
             obs = sorted(seen["call"])
             thr = obs[int(0.15 * len(obs))]
             s = self._strengths()
