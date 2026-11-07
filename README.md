@@ -1,11 +1,11 @@
-# Team shivateja: heads-up NLHE bot
+# Team axion: heads-up NLHE bot
 
 **For the organisers.** Our one bot is at the repo root, flat next to
-`model.py`, exactly as `python -m submit --team shivateja` lists it:
+`model.py`, exactly as `python -m submit --team axion` lists it:
 
 | File | What it is |
 |---|---|
-| `shivateja.pkl` | the pickled `model.Model` (team name: `shivateja`) |
+| `axion.pkl` | the pickled `model.Model` (team name: `axion`) |
 | `model.py` | the bot |
 | `fasteval.py` | fast hand evaluator used by the bot |
 | `pftable.py` | precomputed preflop equity table used by the bot |
@@ -18,7 +18,7 @@ no network, no files, no engine internals. The template files
 (`card_utils.py`, `engine.py`, `game_state.py`, ...) are unchanged from the
 official repo.
 
-To try it: `python -m arena shivateja.pkl equity tight --deals 40`
+To try it: `python -m arena axion.pkl equity tight --deals 40`
 
 ---
 
